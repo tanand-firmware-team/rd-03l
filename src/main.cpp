@@ -21,6 +21,9 @@ SoftwareSerial radar(RX_PIN, TX_PIN);
 static unsigned long lastReadTime = 0;
 const unsigned long readInterval = 100; // Set a delay of 500 ms between readings
 
+char receivedData[6] = {0};
+uint8_t dataIndex = 0;
+
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
   radar.print("Message arrived on topic: ");
   radar.print(topic);
@@ -105,50 +108,53 @@ void loop() {
   // digitalWrite(LED, LOW);   
   // delay(2000);  
 
-  String receivedData; 
   // radar.println("Hi");
   while (Serial.available() > 0) {
     char c = Serial.read();
     delay(50);
-    // radar.print("0x");
-    // radar.println((uint8_t)c, HEX);
+    radar.print("0x");
+    radar.println((uint8_t)c, HEX);
 
-    if (receivedData.isEmpty() && (uint8_t)c == 0x6E) {
-        receivedData += c; // Add first byte to receivedData
-    } else if (!receivedData.isEmpty()) {
-        // Once the first byte is added, continue adding subsequent bytes
-        receivedData += c;
-        // radar.print(receivedData.length());
+    if (dataIndex == 0 && (uint8_t)c == 0x6E) {
+      receivedData[dataIndex++] = c;
+    } else if (dataIndex > 0) {
+      receivedData[dataIndex++] = c;
+
+      if (dataIndex == 5) {
+        // Validate packet
+        if ((uint8_t)receivedData[4] == 0x62) {
+          uint8_t presence = (uint8_t)receivedData[1];
+          uint16_t distance = ((uint8_t)receivedData[3] << 8) | (uint8_t)receivedData[2];
+
+        String presenceStatus;
+        if (presence == 0 || presence == 1) {
+          presenceStatus = "No motion detected.";
+        } else if (presence == 2 || presence == 3) {
+          presenceStatus = "Motion detected.";
+        } else {
+          presenceStatus = "Unknown status.";
+        }
+
+        // Print the decoded information
+        radar.println("Presence Status: " + String(presenceStatus));
+        radar.println("Distance: " +  String(distance) + " cm");
+        String jsonMessage = parseToJson(presence, distance);
+        sendMQTTMessage(jsonMessage);
+        } else {
+          Serial.println("Invalid packet detected.");
+        }
+        memset(receivedData, 0, sizeof(receivedData));
+        dataIndex = 0;
+      }
     }
 
-    if (receivedData.length() == 5 && (uint8_t)receivedData[0] == 0x6E && (uint8_t)receivedData[4]== 0x62) {
-      radar.print("Received Data: ");
-      for (size_t i = 0; i < receivedData.length(); i++) {
-        radar.print("0x");
-        radar.print((uint8_t)receivedData[i], HEX);
-        radar.print(" ");
-      }
-      radar.println();
-
-      uint8_t presence = (uint8_t)receivedData[1];
-      uint16_t distance = ((uint8_t)receivedData[3] << 8) | (uint8_t)receivedData[2];
-
-      String presenceStatus;
-      if (presence == 0 || presence == 1) {
-        presenceStatus = "No motion detected.";
-      } else if (presence == 2 || presence == 3) {
-        presenceStatus = "Motion detected.";
-      } else {
-        presenceStatus = "Unknown status.";
-      }
-
-      // Print the decoded information
-      radar.println("Presence Status: " + String(presenceStatus));
-      radar.println("Distance: " +  String(distance) + " cm");
-      String jsonMessage = parseToJson(presence, distance);
-      sendMQTTMessage(jsonMessage);
-    // break;
-    receivedData = "";
-    } 
+    // Prevent buffer overflow
+    if (dataIndex >= sizeof(receivedData)) {
+      memset(receivedData, 0, sizeof(receivedData));
+      dataIndex = 0;
+    }
   }
+
+  // Small delay for stability
+  delay(10);
 } 
