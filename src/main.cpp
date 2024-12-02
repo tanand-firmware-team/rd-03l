@@ -95,7 +95,7 @@ void setup() {
   connectToMQTT();
 
   // radarModule.begin(Serial, RX_PIN, TX_PIN, 256);
-  radar.println("RD-03L Radar Module Initialized");
+  // radar.println("RD-03L Radar Module Initialized");
   delay(100);
 
 }
@@ -112,8 +112,8 @@ void loop() {
   while (Serial.available() > 0) {
     char c = Serial.read();
     delay(50);
-    radar.print("0x");
-    radar.println((uint8_t)c, HEX);
+    // radar.print("0x");
+    // radar.println((uint8_t)c, HEX);
 
     if (dataIndex == 0 && (uint8_t)c == 0x6E) {
       receivedData[dataIndex++] = c;
@@ -138,10 +138,11 @@ void loop() {
         // Print the decoded information
         radar.println("Presence Status: " + String(presenceStatus));
         radar.println("Distance: " +  String(distance) + " cm");
+
         String jsonMessage = parseToJson(presence, distance);
         sendMQTTMessage(jsonMessage);
         } else {
-          Serial.println("Invalid packet detected.");
+          radar.println("Invalid packet detected.");
         }
         memset(receivedData, 0, sizeof(receivedData));
         dataIndex = 0;
