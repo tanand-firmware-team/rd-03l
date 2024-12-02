@@ -19,7 +19,7 @@ PubSubClient client(espClient);
 // Initialize SoftwareSerial
 SoftwareSerial radar(RX_PIN, TX_PIN);
 static unsigned long lastReadTime = 0;
-const unsigned long readInterval = 100; // Set a delay of 500 ms between readings
+const unsigned long readInterval = 500; // Set a delay of 500 ms between readings
 
 char receivedData[6] = {0};
 uint8_t dataIndex = 0;
@@ -88,7 +88,7 @@ String parseToJson(uint8_t presence, uint16_t distance) {
 void setup() {
   Serial.begin(256000); // For debugging
   radar.begin(9600); // Default baud rate for RD-03L
-  pinMode(LED, OUTPUT); 
+  // pinMode(LED, OUTPUT); 
   connectToWiFi();
   client.setServer(mqtt_server, 1883);
   client.setCallback(mqttCallback);
@@ -157,5 +157,5 @@ void loop() {
   }
 
   // Small delay for stability
-  delay(10);
+  delay(1000);
 } 
