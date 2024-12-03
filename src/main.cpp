@@ -12,14 +12,12 @@
 const char* ssid = "Tanand_Hardware";
 const char* password = "202040406060808010102020";
 
-const char* mqtt_server = "192.168.0.109";  
+const char* mqtt_server = "192.168.0.108";  
 WiFiClient espClient;
 PubSubClient client(espClient);
 
 // Initialize SoftwareSerial
 SoftwareSerial radar(RX_PIN, TX_PIN);
-static unsigned long lastReadTime = 0;
-const unsigned long readInterval = 500; // Set a delay of 500 ms between readings
 
 char receivedData[6] = {0};
 uint8_t dataIndex = 0;
@@ -74,7 +72,7 @@ void connectToMQTT() {
 
 String parseToJson(uint8_t presence, uint16_t distance) {
   // Create a JSON object
-  StaticJsonDocument<200> doc;
+  JsonDocument doc;
   doc["presence"] = (presence == 0 || presence == 1) ? "No motion detected" : "Motion detected";
   doc["distance"] = distance;
 
@@ -85,6 +83,39 @@ String parseToJson(uint8_t presence, uint16_t distance) {
   return jsonMessage;
 }
 
+void setDetectionDistance(float minDistance, float maxDistance) {
+    // Convert meters to radar units (1 unit = 0.7 m)
+    uint8_t minUnits = (uint8_t)(minDistance / 0.7);
+    uint8_t maxUnits = (uint8_t)(maxDistance / 0.7);
+
+    // Ensure values are within valid range
+    if (minUnits > 16) minUnits = 16;
+    if (maxUnits > 16) maxUnits = 16;
+    if (minUnits > maxUnits) {
+        radar.println("Error: Minimum distance cannot be greater than maximum distance.");
+        return;
+    }
+
+    // Build command to set detection distance
+    byte setDistanceCommand[] = {
+        0xFD, 0xFC, 0xFB, 0xFA, 0x0A, 0x00, 0x70, 0x00,
+        0x05, 0x00, maxUnits, 0x00, 0x0A, 0x00, minUnits, 0x00,
+        0x04, 0x03, 0x02, 0x01
+    };
+
+    byte enableCommand[] = {0xFD, 0xFC, 0xFB, 0xFA, 0x04, 0x00, 0xFF, 0x00, 0x01, 0x00, 0x04, 0x03, 0x02, 0x01};
+    Serial.write(enableCommand, sizeof(enableCommand));
+    delay(100);
+
+    Serial.write(setDistanceCommand, sizeof(setDistanceCommand));
+    delay(100);
+
+    // End configuration mode
+    byte endCommand[] = {0xFD, 0xFC, 0xFB, 0xFA, 0x02, 0x00, 0xFE, 0x00, 0x04, 0x03, 0x02, 0x01};
+    Serial.write(endCommand, sizeof(endCommand));
+    delay(100);
+}
+
 void setup() {
   Serial.begin(256000); // For debugging
   radar.begin(9600); // Default baud rate for RD-03L
@@ -93,29 +124,14 @@ void setup() {
   client.setServer(mqtt_server, 1883);
   client.setCallback(mqttCallback);
   connectToMQTT();
-
-  byte command[] = { 
-    0xFD, 0xFC, 0xFB, 0xFA, 0x10, 0x00, 0x70, 0x00, 
-    0x0B, 0x00, 0x0A, 0x00, 0x02, 0x00, 0x80, 0x04, 
-    0x03, 0x02, 0x01 
-  };
-
-  Serial.write(command, sizeof(command));
-  // radarModule.begin(Serial, RX_PIN, TX_PIN, 256);
+  setDetectionDistance(0, 5);
   // radar.println("RD-03L Radar Module Initialized");
   delay(100);
-
 }
 
 void loop() {
   client.loop(); 
-  
-  // digitalWrite(LED, HIGH);    
-  // delay(2000);                     
-  // digitalWrite(LED, LOW);   
-  // delay(2000);  
 
-  // radar.println("Hi");
   while (Serial.available() > 0) {
     char c = Serial.read();
     delay(50);
@@ -162,7 +178,4 @@ void loop() {
       dataIndex = 0;
     }
   }
-
-  // Small delay for stability
-  delay(1000);
 } 
